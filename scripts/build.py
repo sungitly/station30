@@ -21,7 +21,7 @@ def template(name, **fields):
     return Template(source).substitute(fields)
 
 
-def load_post(path):
+def read_post(path):
     slug = path.stem
     if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
         raise ValueError(f"{path.name}: use a lowercase, hyphen-separated slug")
@@ -32,6 +32,11 @@ def load_post(path):
     fields = yaml.safe_load(front_matter)
     if not isinstance(fields, dict):
         raise ValueError(f"{path.name}: expected a metadata mapping")
+    return slug, fields, body
+
+
+def load_post(path):
+    slug, fields, body = read_post(path)
     if fields.get("draft") is True:
         return None
     for key in ("title", "summary", "category"):
