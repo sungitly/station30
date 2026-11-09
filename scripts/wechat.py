@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote, urlencode, urlsplit
+from urllib.parse import unquote, urlencode, urljoin, urlsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -163,6 +163,7 @@ def image_path(root, post, reference, *, cover=False):
 def render(body, post, root, image_url):
     tokens = MARKDOWN.parse(body)
     links = {}
+    canonical = f"{SITE_URL}/posts/{post.stem}/"
 
     def format_tokens(items):
         for token in items:
@@ -171,6 +172,7 @@ def render(body, post, root, image_url):
             if token.type == "link_open":
                 href = token.attrGet("href") or ""
                 if not href.startswith("https://mp.weixin.qq.com/"):
+                    href = urljoin(canonical, href)
                     links.setdefault(href, len(links) + 1)
                     token.meta["reference"] = links[href]
                     token.tag = "span"
@@ -218,15 +220,21 @@ def render(body, post, root, image_url):
 
 
 def article(root, post, fields, body, image_url):
-    for key in ("title", "summary"):
-        if not isinstance(fields.get(key), str) or not fields[key].strip():
-            raise ValueError(f"{post.name}: 缺少 {key}")
+    for key, limit in (("title", 32), ("author", 16), ("summary", 120)):
+        value = fields.get(key, "")
+        if not isinstance(value, str) or (key != "author" and not value.strip()):
+            raise ValueError(f"{post.name}: {key} 必须是有效文本")
+        if len(value) > limit:
+            raise ValueError(f"{post.name}: {key} 须在 {limit} 字以内")
+    content = render(body, post, root, image_url)
+    if len(content) >= 20_000 or len(content.encode("utf-8")) >= 1024 * 1024:
+        raise ValueError(f"{post.name}: 排版后的正文超过微信草稿接口限制")
     return {
         "article_type": "news",
         "title": fields["title"],
         "digest": fields["summary"],
         "author": fields.get("author", ""),
-        "content": render(body, post, root, image_url),
+        "content": content,
         "content_source_url": f"{SITE_URL}/posts/{post.stem}/",
         "need_open_comment": 0,
         "only_fans_can_comment": 0,
